@@ -4,7 +4,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
 
-const MAX_DEPTH: i32 = 10;
+const MAX_DEPTH: i32 = 8;
 
 struct Placeholder {
     foo: i32,
@@ -12,33 +12,35 @@ struct Placeholder {
 
 #[async_recursion]
 async fn recur(depth: i32, max_depth: i32, aux: Vec<Arc<Placeholder>>) -> Result<Vec<Arc<Placeholder>>> {
+    // base case
     if depth == max_depth {
         return Ok(vec![Arc::new(Placeholder {
             foo: 1
         })]);
     }
+    // sleep for no seconds just to suspend the task and kick it to end of queue
     tokio::time::sleep(Duration::from_millis(0)).await;
-
-    println!("step {}", depth);
-
+    
+    // construct a new Placeholder object on the heap
     let to_append = Arc::new(Placeholder {
         foo: depth,
     });
-
+    
+    // fanout arbitrary amount
     let mut tasks = FuturesUnordered::new();
     for _ in 0..(max_depth - depth) {
         let mut new_aux = aux.clone();
         new_aux.push(to_append.clone());
         tasks.push(recur(depth + 1, max_depth, new_aux));
     }
-
+    
+    // await completion of all tasks and return
     let mut ret = Vec::new();
     while let Some(Ok(res)) = tasks.next().await {
         for r in res.iter() {
             ret.push(r.clone());
         }
     }
-
     Ok(ret)
 }
 
